@@ -95,3 +95,6 @@ test_*.py
 
 # Batch files (Windows specific, keep important ones)
 # (setup.bat, FIX_GPU.bat etc. should be committed)
+
+# GitHub workflows - add via web UI
+.github/workflows/

@@ -85,7 +85,8 @@ impl ClipModel {
             // It's a .py script → need Python
             let python_cmd = find_python_command(&model_variant)?;
             eprintln!("[CLIP] Using Python: {}", python_cmd);
-            (python_cmd, server_path)
+            // Clone here because server_path is still needed below for work_dir
+            (python_cmd, server_path.clone())
         } else {
             // It's a bundled standalone executable → run directly
             eprintln!("[CLIP] Using bundled executable (no Python needed)");
@@ -134,7 +135,7 @@ impl ClipModel {
             eprintln!("[CLIP] Working directory set to: {}", wd.display());
         }
 
-        let mut child = cmd.spawn()
+        let child = cmd.spawn()
             .map_err(|e| format!("Failed to start CLIP server (cmd={}): {}", cmd_program, e))?;
 
         // Connect to the TCP server — retry for up to 15s while Python loads models

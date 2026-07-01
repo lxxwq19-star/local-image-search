@@ -39,6 +39,10 @@ jobs:
         with:
           targets: x86_64-apple-darwin,aarch64-apple-darwin
 
+      - name: Install Tauri CLI
+        run: cargo install cargo-tauri --version "^2"
+        timeout-minutes: 30
+
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
@@ -66,3 +70,12 @@ jobs:
             src-tauri/target/release/bundle/dmg/*.dmg
             src-tauri/target/release/bundle/macos/*.app
           retention-days: 30
+
+      - name: Upload build logs (if failed)
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: build-logs-macos-${{ github.run_number }}
+          path: |
+            src-tauri/target/release/build/*/output.log
+          retention-days: 7

@@ -98,8 +98,67 @@ SERVER_PORT = 8765
 
 # Model base directory: can be overridden by CLIP_MODELS_DIR env var
 # This allows Tauri to bundle models in Resources/models/ and tell clip_server where to find them
+# Auto-detect: checks multiple common locations in order of priority
 _script_dir = os.path.dirname(os.path.abspath(__file__))
-MODELS_BASE_DIR = os.environ.get("CLIP_MODELS_DIR", os.path.join(_script_dir, "models"))
+
+def _find_models_dir():
+    """
+    Find the models directory by checking multiple locations in priority order:
+      1. CLIP_MODELS_DIR env var (explicit override)
+      2. {script_dir}/models/  (bundled with app, e.g. inside .app/Contents/Resources/)
+      3. ~/.cache/local-image-search/models/  (Linux/Windows cache)
+      4. ~/Library/Caches/local-image-search/models/  (macOS cache)
+      5. ~/models/  (user home, easy to find)
+      6. ~/Library/Application Support/local-image-search/models/  (macOS app data)
+    Returns the first directory that exists and contains at least one model subfolder.
+    """
+    candidates = []
+
+    # 1. Explicit env override
+    env_dir = os.environ.get("CLIP_MODELS_DIR")
+    if env_dir:
+        candidates.append(os.path.abspath(env_dir))
+
+    # 2. Bundled with script/app
+    candidates.append(os.path.join(_script_dir, "models"))
+
+    # 3. Standard cache dirs
+    home = os.path.expanduser("~")
+    candidates.append(os.path.join(home, ".cache", "local-image-search", "models"))
+    candidates.append(os.path.join(home, "Library", "Caches", "local-image-search", "models"))
+    candidates.append(os.path.join(home, "models"))
+
+    # 4. macOS app data dir
+    candidates.append(os.path.join(home, "Library", "Application Support", "local-image-search", "models"))
+
+    # Also check next to the .app (if running from Applications)
+    # _script_dir might be: /Applications/LocalImageSearch.app/Contents/Resources/
+    # so check: /Applications/models/
+    app_bundle = _script_dir
+    for _ in range(4):
+        parent = os.path.dirname(app_bundle)
+        if parent == app_bundle:
+            break
+        app_bundle = parent
+    if app_bundle.endswith(".app"):
+        candidates.append(os.path.join(os.path.dirname(app_bundle), "models"))
+
+    # Check each candidate: must exist and contain at least one model subfolder
+    model_subfolders = {"eva02-l14", "clip-large", "siglip2-large"}
+    for c in candidates:
+        c = os.path.abspath(c)
+        if os.path.isdir(c):
+            subfolders = {f for f in os.listdir(c) if os.path.isdir(os.path.join(c, f))}
+            if subfolders & model_subfolders:
+                print(f"[MODELS] Found models at: {c}", flush=True)
+                return c
+
+    # Nothing found — return default (will trigger download or error later)
+    default = candidates[1]  # {script_dir}/models/
+    print(f"[MODELS] No local models found, using default: {default}", flush=True)
+    return default
+
+MODELS_BASE_DIR = _find_models_dir()
 
 # ── Shared Constants (CLIP / EVA-CLIP use same normalization) ─────────────────
 TEXT_MAX_LEN = 77

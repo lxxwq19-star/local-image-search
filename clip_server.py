@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Persistent CLIP/EVA-CLIP encoding server.
+Persistent CLIP/SigLIP encoding server.
 Loads models ONCE, handles encode requests via TCP JSON protocol.
 
-MODEL_VARIANT env var controls which model to load:
-  MODEL_VARIANT=clip    → CLIP ViT-B/32 (ONNX, CPU) — default
-  MODEL_VARIANT=eva02  → EVA02-CLIP-L-14-336 (PyTorch, GPU if available)
+Models used:
+  siglip2-large/  → image encoding (以图搜图, 1024维)
+  clip-large/      → text encoding (语义搜图, 768维)
 
 CLIP_MODELS_DIR env var overrides the base directory for model files.
   If set, models are loaded from {CLIP_MODELS_DIR}/siglip2-large/ and
@@ -25,7 +25,7 @@ Protocol (line-delimited JSON):
   Response: {"id": 3, "type": "translate_result", "translatedText": "chinese text"}
 
   Request:  {"id": 4, "type": "get_model_info"}
-  Response: {"id": 4, "type": "model_info_result", "model": "eva02", "dim": 768, "img_size": 336, "gpu": true}
+  Response: {"id": 4, "type": "model_info_result", "model": "siglip2+clip-large", "dim": 1792, "img_size": 256}
 """
 import json
 import sys
@@ -144,7 +144,7 @@ def _find_models_dir():
         candidates.append(os.path.join(os.path.dirname(app_bundle), "models"))
 
     # Check each candidate: must exist and contain at least one model subfolder
-    model_subfolders = {"eva02-l14", "clip-large", "siglip2-large"}
+    model_subfolders = {"clip-large", "siglip2-large"}
     for c in candidates:
         c = os.path.abspath(c)
         if os.path.isdir(c):
@@ -224,56 +224,6 @@ def load_clip_onnx():
         "gpu": False,
     }
 
-
-def load_eva02_pytorch():
-    """Load EVA02-CLIP-L-14-336 via transformers/PyTorch."""
-    try:
-        import torch
-        from transformers import CLIPModel, CLIPProcessor
-    except ImportError as e:
-        raise RuntimeError(
-            f"PyTorch/transformers not installed. "
-            f"Install with: pip install torch torchvision transformers accelerate\n"
-            f"Error: {e}"
-        )
-
-    eva_dir = os.path.join(MODELS_BASE_DIR, "eva02-l14")
-    if not os.path.isdir(eva_dir):
-        raise FileNotFoundError(
-            f"EVA02 model directory not found: {eva_dir}\n"
-            f"Run: python download_eva02.py"
-        )
-
-    # Detect GPU
-    device = get_best_device()
-    dtype  = get_dtype(device)
-
-    print(f"[EVA02] Loading from {eva_dir} ...", flush=True)
-    print(f"[EVA02] Device: {device}, dtype: {dtype}", flush=True)
-
-    model     = CLIPModel.from_pretrained(eva_dir, dtype=dtype)
-    processor = CLIPProcessor.from_pretrained(eva_dir)
-
-    model = model.to(device)
-    model.eval()
-
-    # Check if half precision worked
-    if device == "cuda":
-        vram_mb = torch.cuda.memory_allocated() / 1024 / 1024
-        print(f"[EVA02] ✅ Model loaded on GPU ({vram_mb:.0f} MB VRAM used)", flush=True)
-    else:
-        print(f"[EVA02] ✅ Model loaded on CPU", flush=True)
-
-    return {
-        "type": "eva02_pytorch",
-        "model": model,
-        "processor": processor,
-        "device": device,
-        "dtype": dtype,
-        "img_size": 336,
-        "dim": 768,
-        "gpu": device == "cuda",
-    }
 
 def load_clip_large_pytorch():
     """Load CLIP-ViT-Large-Patch14 via transformers/PyTorch."""

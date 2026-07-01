@@ -67,7 +67,7 @@ pub struct EncodeImageResult {
 
 impl ClipModel {
     /// Start the persistent Python TCP server and connect to it.
-    /// Reads MODEL_VARIANT from config file to select CLIP vs EVA02.
+    /// Reads MODEL_VARIANT from config file to select model (clip-large or siglip2).
     pub fn new() -> Result<Self, String> {
         let _ = find_model_dir().map_err(|e| e.to_string())?;
 
@@ -673,7 +673,7 @@ fn find_python_command(model_variant: &str) -> Result<String, String> {
 
 
     // PyTorch models need transformers, ONNX models don't
-    let needs_transformers = matches!(model_variant, "clip-large" | "siglip2" | "eva02");
+    let needs_transformers = matches!(model_variant, "clip-large" | "siglip2");
 
     // 1. PYTHON_PATH env override
     if let Ok(p) = std::env::var("PYTHON_PATH") {

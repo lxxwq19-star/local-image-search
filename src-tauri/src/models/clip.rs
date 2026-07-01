@@ -129,6 +129,23 @@ impl ClipModel {
             .env("PYTHONUTF8", "1")
             .env("MODEL_VARIANT", &model_variant);
 
+        // Set CLIP_MODELS_DIR so clip_server can find bundled models inside .app
+        // Inside macOS .app: server in Contents/Resources/clip_server/, models in Contents/Resources/models/
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(exe_dir) = exe.parent() {
+                // Check if we're inside a macOS app bundle (Contents/MacOS/)
+                if exe_dir.ends_with("MacOS") {
+                    if let Some(contents_dir) = exe_dir.parent() {
+                        let resources_models = contents_dir.join("Resources").join("models");
+                        if resources_models.exists() {
+                            eprintln!("[CLIP] Setting CLIP_MODELS_DIR={}", resources_models.display());
+                            cmd.env("CLIP_MODELS_DIR", resources_models);
+                        }
+                    }
+                }
+            }
+        }
+
         // Set working directory so Python can find models relative to script location
         if let Some(ref wd) = work_dir {
             cmd.current_dir(wd);

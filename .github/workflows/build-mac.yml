@@ -49,6 +49,16 @@ jobs:
         timeout-minutes: 30
 
       # ---------------------------------------------------------------
+      # Download CLIP models (for offline use)
+      # Runs python download_models.py which uses hf-mirror.com for China speed
+      # ---------------------------------------------------------------
+      - name: Download CLIP models
+        run: |
+          python download_models.py
+        working-directory: ./
+        timeout-minutes: 30
+
+      # ---------------------------------------------------------------
       # PyInstaller: create onedir bundle (folder mode)
       # onedir = more reliable than onefile for large packages like torch
       # Output: dist/clip_server/  (folder with executable + .dylib deps)
@@ -86,6 +96,15 @@ jobs:
         run: |
           mkdir -p src-tauri/resources/
 
+          # Copy models directory (for offline use — no download needed at runtime)
+          if [ -d "models" ]; then
+            cp -R models src-tauri/resources/models
+            echo "✓ Copied models/ → resources/models/"
+            echo "  Models size: $(du -sh src-tauri/resources/models/ | cut -f1)"
+          else
+            echo "⚠ models/ directory not found — app will need internet to download models on first run"
+          fi
+
           if [ "${{ steps.pyinstaller.outputs.bundle_success }}" = "true" ]; then
             # Copy entire onedir folder → resources/clip_server/
             cp -R dist/clip_server src-tauri/resources/clip_server
@@ -101,7 +120,7 @@ jobs:
           echo "✓ Copied clip_server.py as fallback"
 
           echo "Resources contents:"
-          find src-tauri/resources/ -type f | head -20
+          find src-tauri/resources/ -type f | head -30
         working-directory: ./
 
       # ---------------------------------------------------------------

@@ -7,6 +7,10 @@ MODEL_VARIANT env var controls which model to load:
   MODEL_VARIANT=clip    → CLIP ViT-B/32 (ONNX, CPU) — default
   MODEL_VARIANT=eva02  → EVA02-CLIP-L-14-336 (PyTorch, GPU if available)
 
+CLIP_MODELS_DIR env var overrides the base directory for model files.
+  If set, models are loaded from {CLIP_MODELS_DIR}/siglip2-large/ and
+  {CLIP_MODELS_DIR}/clip-large/ instead of {script_dir}/models/.
+
 Protocol (line-delimited JSON):
   Request:  {"id": 1, "type": "encode_images", "paths": ["D:/1.jpg"]}
   Response: {"id": 1, "type": "encode_images_result", "results": [{"path": "...", "vector": [...]}]}
@@ -92,6 +96,11 @@ def log(msg):
 SERVER_HOST = '127.0.0.1'
 SERVER_PORT = 8765
 
+# Model base directory: can be overridden by CLIP_MODELS_DIR env var
+# This allows Tauri to bundle models in Resources/models/ and tell clip_server where to find them
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+MODELS_BASE_DIR = os.environ.get("CLIP_MODELS_DIR", os.path.join(_script_dir, "models"))
+
 # ── Shared Constants (CLIP / EVA-CLIP use same normalization) ─────────────────
 TEXT_MAX_LEN = 77
 MEAN = np.array([0.48145466, 0.4578275, 0.40821073], dtype=np.float32)
@@ -130,7 +139,7 @@ def load_clip_onnx():
     import onnxruntime as ort
     from tokenizers import Tokenizer
 
-    model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+    model_dir = MODELS_BASE_DIR
     text_onnx   = os.path.join(model_dir, "clip_text.onnx")
     vision_onnx = os.path.join(model_dir, "clip_vision.onnx")
     tokenizer_path = os.path.join(model_dir, "tokenizer.json")
@@ -169,7 +178,7 @@ def load_eva02_pytorch():
             f"Error: {e}"
         )
 
-    eva_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "eva02-l14")
+    eva_dir = os.path.join(MODELS_BASE_DIR, "eva02-l14")
     if not os.path.isdir(eva_dir):
         raise FileNotFoundError(
             f"EVA02 model directory not found: {eva_dir}\n"
@@ -219,7 +228,7 @@ def load_clip_large_pytorch():
             f"Error: {e}"
         )
 
-    clip_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "clip-large")
+    clip_dir = os.path.join(MODELS_BASE_DIR, "clip-large")
     if not os.path.isdir(clip_dir):
         raise FileNotFoundError(
             f"CLIP-L/14 model directory not found: {clip_dir}\n"
@@ -269,7 +278,7 @@ def load_siglip2_pytorch():
             f"Error: {e}"
         )
 
-    siglip_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "siglip2-large")
+    siglip_dir = os.path.join(MODELS_BASE_DIR, "siglip2-large")
     if not os.path.isdir(siglip_dir):
         raise FileNotFoundError(
             f"SigLIP2 model directory not found: {siglip_dir}\n"

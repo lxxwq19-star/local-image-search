@@ -75,17 +75,27 @@ impl ClipModel {
         let model_variant = read_model_config().unwrap_or_else(|| "clip".to_string());
         eprintln!("[CLIP] Model variant: {}", model_variant);
 
-        // Find Python command (prefer the one with torch installed)
-        let python_cmd = find_python_command(&model_variant)?;
-        eprintln!("[CLIP] Using Python: {}", python_cmd);
+        // Find server: could be a bundled executable or a .py script
+        let server_path = find_server_path().ok_or_else(|| "clip_server not found".to_string())?;
 
-        let server_script =
-            find_server_script().ok_or_else(|| "clip_server.py not found".to_string())?;
+        eprintln!("[CLIP] Server path: {}", server_path);
 
-        eprintln!("[CLIP] Starting TCP server: {} {}...", python_cmd, server_script);
+        // Determine how to launch the server
+        let (cmd_program, server_arg) = if is_python_script(&server_path) {
+            // It's a .py script → need Python
+            let python_cmd = find_python_command(&model_variant)?;
+            eprintln!("[CLIP] Using Python: {}", python_cmd);
+            (python_cmd, server_path)
+        } else {
+            // It's a bundled standalone executable → run directly
+            eprintln!("[CLIP] Using bundled executable (no Python needed)");
+            (server_path.clone(), String::new())
+        };
 
-        // Determine working directory: use the directory containing clip_server.py
-        let work_dir = std::path::Path::new(&server_script).parent().map(|p| p.to_path_buf());
+        eprintln!("[CLIP] Starting TCP server: {} {}...", cmd_program, server_arg);
+
+        // Determine working directory: directory containing the server (exe or .py)
+        let work_dir = std::path::Path::new(&server_path).parent().map(|p| p.to_path_buf());
 
         // Open log files for capturing Python stdout/stderr
         let log_dir = if let Some(ref wd) = work_dir {
@@ -106,10 +116,12 @@ impl ClipModel {
         eprintln!("[CLIP] stdout -> {}", out_log_path.display());
         eprintln!("[CLIP] stderr -> {}", err_log_path.display());
 
-        let server_script_arg = server_script.clone();
-        let mut cmd = Command::new(&python_cmd);
-        cmd.arg(&server_script)
-            .stdin(Stdio::null())
+        let mut cmd = Command::new(&cmd_program);
+        // If using .py script, pass it as arg; if standalone exe, no arg needed
+        if !server_arg.is_empty() {
+            cmd.arg(&server_arg);
+        }
+        cmd.stdin(Stdio::null())
             .stdout(Stdio::from(out_log))
             .stderr(Stdio::from(err_log))
             .env("PYTHONIOENCODING", "utf-8")
@@ -123,7 +135,7 @@ impl ClipModel {
         }
 
         let mut child = cmd.spawn()
-            .map_err(|e| format!("Failed to start CLIP server (cmd={}): {}", python_cmd, e))?;
+            .map_err(|e| format!("Failed to start CLIP server (cmd={}): {}", cmd_program, e))?;
 
         // Connect to the TCP server — retry for up to 15s while Python loads models
         let addr = format!("{}:{}", SERVER_HOST, SERVER_PORT);
@@ -422,33 +434,88 @@ fn find_model_dir() -> Result<String, Box<dyn std::error::Error>> {
     Err("Could not find models directory with clip_text.onnx".into())
 }
 
-/// Find the clip_server.py script.
-/// Priority: exe directory > current directory > parent of current directory
-fn find_server_script() -> Option<String> {
-    // 1. Try exe directory (most reliable for installed app)
+/// Find the clip_server executable or script.
+/// Priority order:
+///   1. Bundled standalone executable (from PyInstaller) next to the app binary
+///   2. clip_server.py next to the app binary (for dev mode / system Python)
+///   3. Same lookups in current directory and its parent
+pub fn find_server_path() -> Option<String> {
+    // Helper: check if a path exists and is executable
+    fn is_executable(p: &std::path::Path) -> bool {
+        if !p.exists() {
+            return false;
+        }
+        // On Unix, check executable bit; on Windows, check .exe extension
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            p.metadata().map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(false)
+        }
+        #[cfg(not(unix))]
+        {
+            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+            ext == "exe" || ext == "" || p.metadata().map(|m| !m.permissions().readonly()).unwrap_or(true)
+        }
+    }
+
+    // Look in exe directory (most reliable for installed app)
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
-            let p = exe_dir.join("clip_server.py");
-            if p.exists() {
-                eprintln!("[CLIP] Found server script at: {}", p.display());
-                return Some(p.to_string_lossy().to_string());
+            // 1a. Bundled standalone executable next to main binary (macOS: Contents/MacOS/)
+            let bundled = exe_dir.join("clip_server");
+            if is_executable(&bundled) {
+                eprintln!("[CLIP] Found bundled server executable at: {}", bundled.display());
+                return Some(bundled.to_string_lossy().to_string());
+            }
+
+            // 1b. In Resources dir (macOS: Contents/Resources/clip_server)
+            // exe_dir = Contents/MacOS/, so parent() = Contents/
+            let resources = exe_dir.parent().map(|p| p.join("Resources"));
+            if let Some(ref r) = resources {
+                let bundled_res = r.join("clip_server");
+                if is_executable(&bundled_res) {
+                    eprintln!("[CLIP] Found bundled server in Resources: {}", bundled_res.display());
+                    return Some(bundled_res.to_string_lossy().to_string());
+                }
+            }
+
+            // 1c. clip_server.py next to exe (dev mode)
+            let py = exe_dir.join("clip_server.py");
+            if py.exists() {
+                eprintln!("[CLIP] Found server script at: {}", py.display());
+                return Some(py.to_string_lossy().to_string());
             }
         }
     }
-    // 2. Fallback: current directory (dev mode)
+
+    // 2. Fallback: current directory (dev mode: cargo run)
     if let Ok(cwd) = std::env::current_dir() {
-        let p = cwd.join("clip_server.py");
-        if p.exists() {
-            return Some(p.to_string_lossy().to_string());
+        let bundled = cwd.join("clip_server");
+        if is_executable(&bundled) {
+            eprintln!("[CLIP] Found bundled server at: {}", bundled.display());
+            return Some(bundled.to_string_lossy().to_string());
+        }
+        let py = cwd.join("clip_server.py");
+        if py.exists() {
+            return Some(py.to_string_lossy().to_string());
         }
         if let Some(parent) = cwd.parent() {
-            let p = parent.join("clip_server.py");
-            if p.exists() {
-                return Some(p.to_string_lossy().to_string());
+            let py = parent.join("clip_server.py");
+            if py.exists() {
+                return Some(py.to_string_lossy().to_string());
+            }
+            let bundled = parent.join("clip_server");
+            if is_executable(&bundled) {
+                return Some(bundled.to_string_lossy().to_string());
             }
         }
     }
     None
+}
+
+/// Check if a path is a Python script (ends with .py)
+fn is_python_script(path: &str) -> bool {
+    path.ends_with(".py")
 }
 
 /// Read model variant from config file.

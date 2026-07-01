@@ -11,15 +11,15 @@ on:
 jobs:
   build-macos:
     runs-on: macos-latest
-    timeout-minutes: 60
-    
+    timeout-minutes: 90
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ----------------------------------------------------------------
+      # ---------------------------------------------------------------
       # Setup Node.js (for frontend build)
-      # ----------------------------------------------------------------
+      # ---------------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -27,25 +27,72 @@ jobs:
           cache: 'npm'
           cache-dependency-path: src/package-lock.json
 
-      # ----------------------------------------------------------------
-      # Setup Python (for clip_server.py)
-      # ----------------------------------------------------------------
+      # ---------------------------------------------------------------
+      # Setup Python (for clip_server bundling)
+      # ---------------------------------------------------------------
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
           cache: 'pip'
 
+      # ---------------------------------------------------------------
+      # Install Python dependencies + PyInstaller
+      # CPU-only torch to keep bundle size reasonable
+      # ---------------------------------------------------------------
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install transformers\<5.0.0 Pillow numpy onnxruntime tokenizers huggingface-hub safetensors
-          # Note: torch is NOT bundled, users need to install it separately
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install "transformers>=4.30.0,<5.0.0" Pillow numpy onnxruntime tokenizers huggingface-hub safetensors pyinstaller
         working-directory: ./
 
-      # ----------------------------------------------------------------
+      # ---------------------------------------------------------------
+      # Build standalone clip_server executable (PyInstaller)
+      # Output: dist/clip_server/clip_server (macOS executable)
+      # ---------------------------------------------------------------
+      - name: Build standalone clip_server executable
+        run: |
+          pyinstaller pyinstaller.spec --onefile --distpath dist/clip_server_standalone
+          ls -la dist/clip_server_standalone/
+          file dist/clip_server_standalone/clip_server
+        working-directory: ./
+        continue-on-error: true
+
+      # If --onefile fails, try with --onedir (folder mode)
+      - name: Build standalone clip_server (folder mode fallback)
+        if: failure()
+        run: |
+          pyinstaller pyinstaller.spec --onedir --distpath dist/clip_server_dir
+          ls -la dist/clip_server_dir/clip_server/
+          # Create a thin wrapper script
+          echo '#!/bin/bash' > dist/clip_server_standalone/clip_server
+          echo 'DIR="$(cd "$(dirname "$0")" && pwd)"' >> dist/clip_server_standalone/clip_server
+          echo 'exec "$DIR/clip_server.app/Contents/MacOS/clip_server" "$@"' >> dist/clip_server_standalone/clip_server
+          chmod +x dist/clip_server_standalone/clip_server
+        working-directory: ./
+
+      # ---------------------------------------------------------------
+      # Copy standalone executable into resources (for Tauri bundling)
+      # ---------------------------------------------------------------
+      - name: Copy clip_server to Tauri resources
+        run: |
+          mkdir -p src-tauri/resources/
+          if [ -f dist/clip_server_standalone/clip_server ]; then
+            cp dist/clip_server_standalone/clip_server src-tauri/resources/clip_server
+            chmod +x src-tauri/resources/clip_server
+            echo "Copied standalone clip_server executable"
+          else
+            echo "WARNING: standalone executable not found, will use system Python fallback"
+          fi
+          # Also copy clip_server.py as fallback
+          cp clip_server.py src-tauri/resources/clip_server.py
+          echo "Copied clip_server.py as fallback"
+        working-directory: ./
+
+      # ---------------------------------------------------------------
       # Setup Rust (for Tauri)
-      # ----------------------------------------------------------------
+      # ---------------------------------------------------------------
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -56,31 +103,52 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
-      # ----------------------------------------------------------------
+      # ---------------------------------------------------------------
       # Install frontend dependencies
-      # ----------------------------------------------------------------
+      # ---------------------------------------------------------------
       - name: Install frontend dependencies
         run: npm install
         working-directory: src
 
-      # ----------------------------------------------------------------
+      # ---------------------------------------------------------------
       # Build frontend
-      # ----------------------------------------------------------------
+      # ---------------------------------------------------------------
       - name: Build frontend
         run: npm run build
         working-directory: src
 
-      # ----------------------------------------------------------------
+      # ---------------------------------------------------------------
       # Install Tauri CLI (required for npx tauri build)
-      # ----------------------------------------------------------------
+      # ---------------------------------------------------------------
       - name: Install Tauri CLI
         run: npm install @tauri-apps/cli
         working-directory: src-tauri
 
-      # ----------------------------------------------------------------
+      # ---------------------------------------------------------------
+      # Update tauri.conf.json to include resources
+      # ---------------------------------------------------------------
+      - name: Configure Tauri resources
+        run: |
+          python3 -c "
+          import json
+          with open('src-tauri/tauri.conf.json', 'r') as f:
+              conf = json.load(f)
+          # Add resources if not present
+          if 'resources' not in conf.get('bundle', {}):
+              if 'bundle' not in conf:
+                  conf['bundle'] = {}
+              conf['bundle']['resources'] = ['resources/']
+          with open('src-tauri/tauri.conf.json', 'w') as f:
+              json.dump(conf, f, indent=2, ensure_ascii=False)
+          print('Updated tauri.conf.json:')
+          print(json.dumps(conf['bundle'], indent=2))
+          "
+        working-directory: ./
+
+      # ---------------------------------------------------------------
       # Build Tauri app (macOS)
-      # Icons are already in src-tauri/icons/ (committed to repo)
-      # ----------------------------------------------------------------
+      # Icons + resources are bundled by Tauri
+      # ---------------------------------------------------------------
       - name: Build Tauri app
         run: |
           cd src-tauri
@@ -88,9 +156,9 @@ jobs:
         env:
           CI: true
 
-      # ----------------------------------------------------------------
+      # ---------------------------------------------------------------
       # Upload build artifacts
-      # ----------------------------------------------------------------
+      # ---------------------------------------------------------------
       - name: Upload DMG installer
         uses: actions/upload-artifact@v4
         if: success()

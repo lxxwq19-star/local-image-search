@@ -49,14 +49,11 @@ jobs:
         timeout-minutes: 30
 
       # ---------------------------------------------------------------
-      # Download CLIP models (for offline use)
-      # Runs python download_models.py which uses hf-mirror.com for China speed
+      # NOTE: Models NOT downloaded in CI (unreliable — HF mirror timeouts)
+      # User copies models/ via USB to Mac at:  ~/models/
+      # clip_server.py auto-detects models in common locations
+      # See _find_models_dir() in clip_server.py for full search path
       # ---------------------------------------------------------------
-      - name: Download CLIP models
-        run: |
-          python download_models.py
-        working-directory: ./
-        timeout-minutes: 30
 
       # ---------------------------------------------------------------
       # PyInstaller: create onedir bundle (folder mode)
@@ -96,14 +93,8 @@ jobs:
         run: |
           mkdir -p src-tauri/resources/
 
-          # Copy models directory (for offline use — no download needed at runtime)
-          if [ -d "models" ]; then
-            cp -R models src-tauri/resources/models
-            echo "✓ Copied models/ → resources/models/"
-            echo "  Models size: $(du -sh src-tauri/resources/models/ | cut -f1)"
-          else
-            echo "⚠ models/ directory not found — app will need internet to download models on first run"
-          fi
+          # NOTE: Models NOT bundled — user copies via USB to ~/models/
+          # clip_server.py auto-detects: ~/models/, ~/.cache/local-image-search/models/, etc.
 
           if [ "${{ steps.pyinstaller.outputs.bundle_success }}" = "true" ]; then
             # Copy entire onedir folder → resources/clip_server/

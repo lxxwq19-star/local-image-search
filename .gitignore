@@ -1,0 +1,97 @@
+# Local Image Search 2 - Git Ignore
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Frontend build output
+src/dist/
+src/.turbo/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+venv/
+env/
+ENV/
+
+# Python logs (application generated)
+clip_server.log
+clip_server_err.log
+test_gpu.py
+
+# PyTorch cache
+.pytorch/
+torch_cache/
+
+# HuggingFace cache
+.huggingface/
+~/.cache/huggingface/
+
+# Tauri
+src-tauri/target/
+src-tauri/bundle/
+*.pdb
+*.ilk
+*.obj
+*.pch
+*.res
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.rsp
+*.pgc
+*.pgd
+*.metagen
+*.tlog
+*.log
+*.manifest
+*.lastbuildstate
+
+# Tauri - Rust
+**/*.rs.bk
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Model files (large, should be downloaded by users)
+*.bin
+*.safetensors
+*.onnx
+
+# Environment
+.env
+.<ENV>
+
+# Test files
+test_*.py
+*_test.py
+
+# Batch files (Windows specific, keep important ones)
+# (setup.bat, FIX_GPU.bat etc. should be committed)

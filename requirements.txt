@@ -1,0 +1,34 @@
+# Python dependencies for local-image-search2
+# Fixed versions to avoid transformers 5.x API changes
+# Install with: python -m pip install -r requirements.txt
+
+# ── CRITICAL: Use PyTorch CUDA index for GPU support ─────────
+# This ensures pip installs the CUDA (GPU) version, not CPU version
+--extra-index-url https://download.pytorch.org/whl/cu121
+
+# PyTorch (GPU version with CUDA 12.1)
+# NOTE: Without --extra-index-url above, pip installs CPU version from PyPI!
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Transformers (pinned <5.0 to avoid API changes)
+# SigLIP2 and CLIP-L/14 require stable transformers API
+transformers>=4.30.0,<5.0.0
+
+# Image processing
+Pillow>=9.0.0
+
+# Vector operations
+numpy>=1.24.0
+
+# ONNX fallback (optional, for CPU-only mode)
+onnxruntime>=1.16.0
+
+# Tokenizers (for CLIP text encoding)
+tokenizers>=0.13.0
+
+# HuggingFace Hub (for downloading models)
+huggingface-hub>=0.20.0
+
+# Safe tensors format support (required by newer transformers)
+safetensors>=0.3.0

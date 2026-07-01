@@ -1,0 +1,10 @@
+{
+  "name": "local-image-search",
+  "version": "0.1.0",
+  "description": "Tauri app for local image search",
+  "scripts": {
+    "build": "cd ../src && npm run build",
+    "dev": "cd ../src && npm run dev"
+  },
+  "devDependencies": {}
+}

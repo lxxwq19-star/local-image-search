@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<body>
+<h2>CLIP Test</h2>
+<button onclick="runTest()">Run Test</button>
+<pre id="log" style="background:#222;color:#0f0;padding:10px;max-height:400px;overflow:auto;font-family:monospace"></pre>
+<script>
+const TEST_PATH = 'D:\\桌面\\cs\\2024A-K51\\K51D001A.JPG';
+
+async function invoke(cmd, args) {
+  return new Promise((resolve, reject) => {
+    window.__TAURI__.core.invoke(cmd, args).then(resolve).catch(reject);
+  });
+}
+
+async function log(msg) {
+  const el = document.getElementById('log');
+  el.textContent += msg + '\n';
+  console.log(msg);
+}
+
+window.runTest = async function() {
+  log('=== CLIP Test ===');
+  
+  try {
+    log('Calling test_clip_encode...');
+    const start = Date.now();
+    const result = await invoke('test_clip_encode', { path: TEST_PATH });
+    log('SUCCESS in ' + (Date.now() - start) + 'ms: ' + result);
+  } catch(e) {
+    log('ERROR: ' + (e.message || String(e)));
+  }
+
+  try {
+    const status = await invoke('get_index_status', {});
+    log('getIndexStatus: ' + JSON.stringify(status));
+  } catch(e) {
+    log('getIndexStatus ERROR: ' + e);
+  }
+
+  try {
+    log('Calling index_directory (trigger full reindex)...');
+    const result = await invoke('index_directory', { path: 'D:\\桌面\\cs\\2024A-K51' });
+    log('index_directory result: ' + result);
+  } catch(e) {
+    log('index_directory ERROR: ' + e);
+  }
+
+  try {
+    const status2 = await invoke('get_index_status', {});
+    log('Final getIndexStatus: ' + JSON.stringify(status2));
+  } catch(e) {
+    log('Final getIndexStatus ERROR: ' + e);
+  }
+};
+</script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+[package]
+name = "local-image-search"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset", "devtools"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+# ort removed - using Python for ONNX inference
+# ndarray/ndarray-rand removed - not needed with Python approach
+# tokenizers removed - using Python tokenizer
+image = "0.25"
+base64 = "0.21"
+tokio = { version = "1", features = ["full"] }
+walkdir = "2"
+sha2 = "0.10"
+imagesize = "0.13"
+dirs = "5"  # For platform-specific directories
+open = "5"
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }

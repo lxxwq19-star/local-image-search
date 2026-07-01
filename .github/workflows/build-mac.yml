@@ -189,6 +189,42 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # ---------------------------------------------------------------
+      # Ad-hoc code sign (prevents "damaged file" error on macOS)
+      # Uses "-" identity = local signing, no Developer ID needed
+      # Must run BEFORE artifact upload
+      # ---------------------------------------------------------------
+      - name: Ad-hoc code sign .app
+        run: |
+          APP="src-tauri/target/release/bundle/macos/LocalImageSearch.app"
+          if [ -d "$APP" ]; then
+            echo "=== Signing $APP (ad-hoc) ==="
+            codesign --force --deep --sign - "$APP"
+            echo "=== Verifying signature ==="
+            codesign --verify --deep --strict "$APP" 2>&1 || true
+            spctl --assess --type execute "$APP" 2>&1 || true
+            echo "✓ Ad-hoc signing done"
+          else
+            echo "⚠ .app not found, skipping codesign"
+            ls -la src-tauri/target/release/bundle/macos/ 2>/dev/null || echo "(no macos dir)"
+          fi
+        working-directory: ./
+
+      # ---------------------------------------------------------------
+      # Also sign the .dmg if present (some macOS versions check)
+      # ---------------------------------------------------------------
+      - name: Ad-hoc code sign .dmg (if present)
+        run: |
+          DMG="src-tauri/target/release/bundle/dmg/LocalImageSearch.dmg"
+          if [ -f "$DMG" ]; then
+            echo "=== Signing DMG (ad-hoc) ==="
+            codesign --force --sign - "$DMG"
+            echo "✓ DMG signed"
+          else
+            echo "⚠ .dmg not found, skipping"
+          fi
+        working-directory: ./
+
+      # ---------------------------------------------------------------
       # Upload artifacts
       # ---------------------------------------------------------------
       - name: Upload DMG + .app

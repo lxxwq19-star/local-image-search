@@ -441,12 +441,11 @@ fn find_model_dir() -> Result<String, Box<dyn std::error::Error>> {
 ///   2. clip_server.py next to the app binary (for dev mode / system Python)
 ///   3. Same lookups in current directory and its parent
 pub fn find_server_path() -> Option<String> {
-    // Helper: check if a path exists and is executable
+    // Helper: check if a path exists, is a file, and is executable
     fn is_executable(p: &std::path::Path) -> bool {
-        if !p.exists() {
+        if !p.exists() || !p.is_file() {
             return false;
         }
-        // On Unix, check executable bit; on Windows, check .exe extension
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -462,17 +461,30 @@ pub fn find_server_path() -> Option<String> {
     // Look in exe directory (most reliable for installed app)
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
-            // 1a. Bundled standalone executable next to main binary (macOS: Contents/MacOS/)
+            // 1a. Onedir bundle next to exe: clip_server/clip_server (folder + exe)
+            let onedir_exe = exe_dir.join("clip_server").join("clip_server");
+            if onedir_exe.exists() && is_executable(&onedir_exe) {
+                eprintln!("[CLIP] Found onedir bundle at: {}", onedir_exe.display());
+                return Some(onedir_exe.to_string_lossy().to_string());
+            }
+
+            // 1b. Bundled standalone executable (PyInstaller onefile) next to exe
             let bundled = exe_dir.join("clip_server");
             if is_executable(&bundled) {
                 eprintln!("[CLIP] Found bundled server executable at: {}", bundled.display());
                 return Some(bundled.to_string_lossy().to_string());
             }
 
-            // 1b. In Resources dir (macOS: Contents/Resources/clip_server)
-            // exe_dir = Contents/MacOS/, so parent() = Contents/
+            // 1c. In Resources dir (macOS: Contents/Resources/)
             let resources = exe_dir.parent().map(|p| p.join("Resources"));
             if let Some(ref r) = resources {
+                // Onedir bundle in Resources: clip_server/clip_server
+                let onedir_res = r.join("clip_server").join("clip_server");
+                if onedir_res.exists() && is_executable(&onedir_res) {
+                    eprintln!("[CLIP] Found onedir bundle in Resources: {}", onedir_res.display());
+                    return Some(onedir_res.to_string_lossy().to_string());
+                }
+                // Single executable in Resources: clip_server
                 let bundled_res = r.join("clip_server");
                 if is_executable(&bundled_res) {
                     eprintln!("[CLIP] Found bundled server in Resources: {}", bundled_res.display());
@@ -480,7 +492,7 @@ pub fn find_server_path() -> Option<String> {
                 }
             }
 
-            // 1c. clip_server.py next to exe (dev mode)
+            // 1d. clip_server.py next to exe (dev mode)
             let py = exe_dir.join("clip_server.py");
             if py.exists() {
                 eprintln!("[CLIP] Found server script at: {}", py.display());
@@ -491,15 +503,24 @@ pub fn find_server_path() -> Option<String> {
 
     // 2. Fallback: current directory (dev mode: cargo run)
     if let Ok(cwd) = std::env::current_dir() {
+        // Onedir bundle in cwd
+        let onedir = cwd.join("clip_server").join("clip_server");
+        if onedir.exists() && is_executable(&onedir) {
+            eprintln!("[CLIP] Found onedir bundle at: {}", onedir.display());
+            return Some(onedir.to_string_lossy().to_string());
+        }
+        // Single executable in cwd
         let bundled = cwd.join("clip_server");
         if is_executable(&bundled) {
             eprintln!("[CLIP] Found bundled server at: {}", bundled.display());
             return Some(bundled.to_string_lossy().to_string());
         }
+        // Python script in cwd
         let py = cwd.join("clip_server.py");
         if py.exists() {
             return Some(py.to_string_lossy().to_string());
         }
+        // Parent directory
         if let Some(parent) = cwd.parent() {
             let py = parent.join("clip_server.py");
             if py.exists() {
@@ -508,6 +529,10 @@ pub fn find_server_path() -> Option<String> {
             let bundled = parent.join("clip_server");
             if is_executable(&bundled) {
                 return Some(bundled.to_string_lossy().to_string());
+            }
+            let onedir = parent.join("clip_server").join("clip_server");
+            if onedir.exists() && is_executable(&onedir) {
+                return Some(onedir.to_string_lossy().to_string());
             }
         }
     }

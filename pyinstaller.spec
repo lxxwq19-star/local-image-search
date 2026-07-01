@@ -1,25 +1,25 @@
 # -*- mode: python ; coding: utf-8 -*-
-
+#
 # PyInstaller spec for clip_server.py
-# Creates a standalone executable with Python + all dependencies bundled
-# Usage: pyinstaller pyinstaller.spec --onefile
+# Creates an onedir bundle (folder mode) with Python + all dependencies
+# onedir is MORE RELIABLE than onefile for large packages like torch
+#
+# Usage: pyinstaller pyinstaller.spec
+# Output: dist/clip_server/clip_server (executable + deps in same folder)
 
 from PyInstaller.building.build_main import Analysis, PYZ, EXE, COLLECT
-from PyInstaller import log as logging
-
-logging.logger.setLevel(logging.WARN)
 
 block_cipher = None
 
-# Main analysis
+# On macOS: do NOT exclude torch.cuda — macOS uses MPS (Metal Performance Shaders),
+# which is a different backend from CUDA. Excluding torch.cuda can cause
+# dynamic library loading issues with MPS.
+
 a = Analysis(
     ['clip_server.py'],
     pathex=[],
     binaries=[],
-    datas=[
-        # Include any data files needed at runtime
-        # (models are downloaded at runtime, not bundled)
-    ],
+    datas=[],
     hiddenimports=[
         'torch',
         'torchvision',
@@ -37,37 +37,56 @@ a = Analysis(
         'socket',
         'struct',
         'threading',
+        'concurrent.futures',
+        'safetensors.torch',
+        'transformers.models.clip',
+        'transformers.models.siglip2',
+        'transformers.models.eva',
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        # Exclude unnecessary large packages to reduce size
-        'torch.cuda',      # CPU-only build: exclude CUDA libs
-        'torch._C._cuda',
+        # Only exclude very large unnecessary packages
+        # torch.cuda is NOT excluded — macOS MPS needs parts of it
     ],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
     noarchive=False,
+    optimize=0,
 )
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+# EXE without the binaries (onedir mode)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,   # ← onedir mode: binaries go in COLLECT, not EXE
     name='clip_server',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,         # Keep console for server stdout/stderr
+    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
-    target_arch=None,     # Auto-detect (x86_64 or arm64 on macOS)
+    target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
     icon=None,
+)
+
+# COLLECT: puts exe + all binaries + datas into a folder
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='clip_server',   # Output folder: dist/clip_server/
 )

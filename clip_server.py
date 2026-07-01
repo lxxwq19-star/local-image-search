@@ -107,6 +107,21 @@ print(f"[SERVER] TTA_CROPS={TTA_CROPS}, TTA_FLIP={TTA_FLIP}", flush=True)
 
 
 # ════════════════════════════════════════════════════════════════════════
+def get_best_device():
+    """Select best available device: CUDA > MPS (Apple Silicon) > CPU."""
+    import torch
+    if torch.cuda.is_available():
+        return "cuda"
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
+def get_dtype(device):
+    """float16 on GPU devices (faster), float32 on CPU."""
+    return torch.float16 if device in ("cuda", "mps") else torch.float32
+
+
 # MODEL LOADING
 # ════════════════════════════════════════════════════════════════════════
 
@@ -162,8 +177,8 @@ def load_eva02_pytorch():
         )
 
     # Detect GPU
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype  = torch.float16 if device == "cuda" else torch.float32
+    device = get_best_device()
+    dtype  = get_dtype(device)
 
     print(f"[EVA02] Loading from {eva_dir} ...", flush=True)
     print(f"[EVA02] Device: {device}, dtype: {dtype}", flush=True)
@@ -212,8 +227,8 @@ def load_clip_large_pytorch():
         )
 
     # Detect GPU
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype  = torch.float16 if device == "cuda" else torch.float32
+    device = get_best_device()
+    dtype  = get_dtype(device)
 
     print(f"[CLIP-L] Loading from {clip_dir} ...", flush=True)
     print(f"[CLIP-L] Device: {device}, dtype: {dtype}", flush=True)
@@ -262,8 +277,8 @@ def load_siglip2_pytorch():
         )
 
     # Detect GPU
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype  = torch.float16 if device == "cuda" else torch.float32
+    device = get_best_device()
+    dtype  = get_dtype(device)
 
     print(f"[SigLIP2] Loading from {siglip_dir} ...", flush=True)
     print(f"[SigLIP2] Device: {device}, dtype: {dtype}", flush=True)
@@ -912,18 +927,24 @@ def main():
             break
 
 if __name__ == "__main__":
-    # Startup diagnostic: print torch/CUDA status
+    # Startup diagnostic: print torch/CUDA/MPS status
     try:
         import torch
         print(f"[STARTUP] torch version: {torch.__version__}", flush=True)
-        print(f"[STARTUP] CUDA available: {torch.cuda.is_available()}", flush=True)
-        if torch.cuda.is_available():
+        # CUDA
+        cuda_ok = torch.cuda.is_available()
+        print(f"[STARTUP] CUDA available: {cuda_ok}", flush=True)
+        if cuda_ok:
             print(f"[STARTUP] CUDA version: {torch.version.cuda}", flush=True)
             print(f"[STARTUP] GPU: {torch.cuda.get_device_name(0)}", flush=True)
             print(f"[STARTUP] GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB", flush=True)
-        else:
-            print(f"[STARTUP] *** WARNING: CUDA NOT AVAILABLE - MODELS WILL RUN ON CPU ***", flush=True)
-            print(f"[STARTUP] Fix: run FIX_GPU.bat to install GPU torch", flush=True)
+        # MPS (Apple Silicon Mac)
+        mps_ok = hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
+        print(f"[STARTUP] MPS available: {mps_ok}", flush=True)
+        if mps_ok:
+            print(f"[STARTUP] MPS: Apple Silicon GPU enabled (float16)", flush=True)
+        if not cuda_ok and not mps_ok:
+            print(f"[STARTUP] *** CPU only - models will run slower ***", flush=True)
     except Exception as e:
         print(f"[STARTUP] Diagnostic error: {e}", flush=True)
 

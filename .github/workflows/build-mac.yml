@@ -225,16 +225,38 @@ jobs:
         working-directory: ./
 
       # ---------------------------------------------------------------
-      # Upload artifacts
+      # Create .zip archive instead of .dmg
+      # .zip does NOT trigger Gatekeeper quarantine → no "damaged" error
+      # Must run AFTER code sign, BEFORE artifact upload
       # ---------------------------------------------------------------
-      - name: Upload DMG + .app
+      - name: Create .zip archive (no Gatekeeper quarantine)
+        run: |
+          APP="src-tauri/target/release/bundle/macos/LocalImageSearch.app"
+          ZIP="src-tauri/target/release/bundle/macos/LocalImageSearch-macOS.zip"
+          if [ -d "$APP" ]; then
+            echo "=== Creating .zip archive ==="
+            cd src-tauri/target/release/bundle/macos/
+            ditto -c -k --sequester "$APP" "LocalImageSearch-macOS.zip"
+            echo "✓ Created: $(du -sh LocalImageSearch-macOS.zip | cut -f1)"
+            ls -la LocalImageSearch-macOS.zip
+            cd - > /dev/null
+          else
+            echo "⚠ .app not found, skipping zip creation"
+          fi
+        working-directory: ./
+
+      # ---------------------------------------------------------------
+      # Upload artifacts (.zip + .app, NO .dmg)
+      # .zip format avoids macOS Gatekeeper "damaged file" error entirely
+      # ---------------------------------------------------------------
+      - name: Upload .zip + .app
         uses: actions/upload-artifact@v4
         if: success()
         with:
           name: LocalImageSearch-macos-Apple-Silicon-${{ github.run_number }}
           path: |
-            src-tauri/target/release/bundle/dmg/*.dmg
-            src-tauri/target/release/bundle/macos/*.app
+            src-tauri/target/release/bundle/macos/LocalImageSearch-macOS.zip
+            src-tauri/target/release/bundle/macos/LocalImageSearch.app
             MAC_COMPATIBILITY.md
           retention-days: 30
 

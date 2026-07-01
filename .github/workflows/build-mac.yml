@@ -78,38 +78,8 @@ jobs:
         working-directory: src-tauri
 
       # ----------------------------------------------------------------
-      # Generate Tauri icons (required for build)
-      # ----------------------------------------------------------------
-      - name: Generate Tauri icons
-        run: |
-          python -c "
-          from PIL import Image
-          import os
-          
-          icons_dir = 'src-tauri/icons'
-          os.makedirs(icons_dir, exist_ok=True)
-          
-          # Create a simple 1024x1024 icon (blue background)
-          img = Image.new('RGBA', (1024, 1024), (0, 150, 255, 255))
-          
-          # Save all required icon sizes
-          icons = {
-              '32x32.png': 32,
-              '128x128.png': 128,
-              '128x128@2x.png': 256,
-              'icon.png': 512,
-              'icon@2x.png': 1024,
-          }
-          
-          for filename, size in icons.items():
-              resized = img.resize((size, size), Image.Resampling.LANCZOS)
-              resized.save(os.path.join(icons_dir, filename))
-              print(f'Created {filename}')
-          "
-        working-directory: ./
-
-      # ----------------------------------------------------------------
       # Build Tauri app (macOS)
+      # Icons are already in src-tauri/icons/ (committed to repo)
       # ----------------------------------------------------------------
       - name: Build Tauri app
         run: |

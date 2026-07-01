@@ -39,10 +39,6 @@ jobs:
         with:
           targets: x86_64-apple-darwin,aarch64-apple-darwin
 
-      - name: Install Tauri CLI
-        run: cargo install cargo-tauri --version "^2"
-        timeout-minutes: 30
-
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
@@ -56,8 +52,12 @@ jobs:
         run: npm run build
         working-directory: src
 
+      - name: Install Tauri CLI
+        run: npm install @tauri-apps/cli
+        working-directory: src-tauri
+
       - name: Build Tauri app (macOS)
-        run: cd src-tauri && cargo tauri build
+        run: cd src-tauri && npx tauri build
         env:
           CI: true
 
